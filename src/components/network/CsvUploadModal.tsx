@@ -2,8 +2,17 @@
 
 import { useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { Upload, X, FileSpreadsheet, AlertTriangle } from "lucide-react";
-import { parseGoogleFormsFile } from "@/lib/csv-parser";
+import {
+  Upload,
+  X,
+  FileSpreadsheet,
+  AlertTriangle,
+  ImagePlus,
+} from "lucide-react";
+import {
+  bindAvatarFilesToGraph,
+  parseGoogleFormsFile,
+} from "@/lib/csv-parser";
 import type { NetworkGraph } from "@/types/network";
 
 interface CsvUploadModalProps {
@@ -18,10 +27,12 @@ export default function CsvUploadModal({
   onLoaded,
 }: CsvUploadModalProps) {
   const inputRef = useRef<HTMLInputElement>(null);
+  const imagesInputRef = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [warnings, setWarnings] = useState<string[]>([]);
+  const [avatarFiles, setAvatarFiles] = useState<File[]>([]);
 
   const handleFile = async (file: File | null | undefined) => {
     if (!file) return;
@@ -36,10 +47,24 @@ export default function CsvUploadModal({
 
     try {
       const result = await parseGoogleFormsFile(file);
-      setWarnings(result.warnings);
-      onLoaded(result.graph, {
+      const avatarBinding = bindAvatarFilesToGraph(result.graph, avatarFiles);
+      const nextWarnings = [...result.warnings];
+      if (avatarFiles.length > 0) {
+        nextWarnings.push(
+          `Bound ${avatarBinding.matched}/${avatarFiles.length} local avatar files by filename.`,
+        );
+        if (avatarBinding.unmatchedFiles.length > 0) {
+          nextWarnings.push(
+            `Unmatched files: ${avatarBinding.unmatchedFiles.slice(0, 5).join(", ")}${
+              avatarBinding.unmatchedFiles.length > 5 ? "…" : ""
+            }`,
+          );
+        }
+      }
+      setWarnings(nextWarnings);
+      onLoaded(avatarBinding.graph, {
         fileName: file.name,
-        warnings: result.warnings,
+        warnings: nextWarnings,
       });
       onClose();
     } catch (err) {
@@ -137,6 +162,44 @@ export default function CsvUploadModal({
                   className="hidden"
                   onChange={(e) => void handleFile(e.target.files?.[0])}
                 />
+              </div>
+
+              <div className="rounded-xl border border-slate-700/70 bg-slate-950/50 px-4 py-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-medium text-slate-200">
+                      Bulk Profile Photos (optional)
+                    </p>
+                    <p className="mt-1 text-xs text-slate-500">
+                      Upload `.jpg`, `.png`, `.webp` files named like `mariam_kapanadze.jpg`.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => imagesInputRef.current?.click()}
+                    className="inline-flex items-center gap-1 rounded-md border border-slate-600 bg-slate-900/70 px-2.5 py-1.5 text-xs text-slate-200 hover:border-slate-500"
+                  >
+                    <ImagePlus size={13} />
+                    Add Photos
+                  </button>
+                </div>
+                <input
+                  ref={imagesInputRef}
+                  type="file"
+                  accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
+                  multiple
+                  className="hidden"
+                  onChange={(e) => {
+                    const files = Array.from(e.target.files ?? []);
+                    if (files.length === 0) return;
+                    setAvatarFiles(files);
+                  }}
+                />
+                <p className="mt-2 text-[11px] text-slate-400">
+                  {avatarFiles.length > 0
+                    ? `${avatarFiles.length} photo files selected`
+                    : "No photo files selected"}
+                </p>
               </div>
 
               {error && (

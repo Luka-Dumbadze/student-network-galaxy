@@ -79,8 +79,10 @@ const NetworkGalaxy = forwardRef<NetworkGalaxyHandle, NetworkGalaxyProps>(
   ) {
     const containerRef = useRef<HTMLDivElement>(null);
     const fgRef = useRef<GraphMethods | undefined>(undefined);
+    const avatarImageCache = useRef<Map<string, HTMLImageElement | null>>(new Map());
     const [dims, setDims] = useState({ width: 800, height: 600 });
     const [hoverNode, setHoverNode] = useState<GraphNode | null>(null);
+    const [, setAvatarVersion] = useState(0);
 
     useEffect(() => {
       const el = containerRef.current;
@@ -191,6 +193,23 @@ const NetworkGalaxy = forwardRef<NetworkGalaxyHandle, NetworkGalaxyProps>(
     return { label: "Student", tone: "slate" as const };
   }, [detailNode]);
 
+    const getAvatarImage = useCallback((avatarUrl?: string): HTMLImageElement | null => {
+      if (!avatarUrl) return null;
+      const cached = avatarImageCache.current.get(avatarUrl);
+      if (cached) return cached.complete ? cached : null;
+      if (avatarImageCache.current.has(avatarUrl) && cached === null) return null;
+
+      const image = new Image();
+      image.onload = () => setAvatarVersion((v) => v + 1);
+      image.onerror = () => {
+        avatarImageCache.current.set(avatarUrl, null);
+        setAvatarVersion((v) => v + 1);
+      };
+      image.src = avatarUrl;
+      avatarImageCache.current.set(avatarUrl, image);
+      return null;
+    }, []);
+
     const paintNode = useCallback(
       (node: GraphNode, ctx: CanvasRenderingContext2D, globalScale: number) => {
         const isFocus = !highlightRootId || highlight.nodes.has(node.id);
@@ -235,37 +254,64 @@ const NetworkGalaxy = forwardRef<NetworkGalaxyHandle, NetworkGalaxyProps>(
         );
         ctx.fill();
 
-        ctx.beginPath();
-        ctx.arc(node.x ?? 0, node.y ?? 0, radius, 0, Math.PI * 2);
-        ctx.fillStyle = isHovered ? "#F8FAFC" : baseColor;
-        ctx.shadowColor = baseColor;
-        ctx.shadowBlur = isHovered ? 24 : 14;
-        ctx.fill();
+        const avatarImage = getAvatarImage(node.avatarUrl);
+        if (avatarImage) {
+          // Circular clipped avatar with glowing border.
+          ctx.save();
+          ctx.beginPath();
+          ctx.arc(node.x ?? 0, node.y ?? 0, radius, 0, Math.PI * 2);
+          ctx.closePath();
+          ctx.clip();
+          ctx.drawImage(
+            avatarImage,
+            (node.x ?? 0) - radius,
+            (node.y ?? 0) - radius,
+            radius * 2,
+            radius * 2,
+          );
+          ctx.restore();
 
-        ctx.shadowBlur = 0;
-        ctx.beginPath();
-        ctx.arc(
-          (node.x ?? 0) - radius * 0.25,
-          (node.y ?? 0) - radius * 0.25,
-          radius * 0.35,
-          0,
-          Math.PI * 2,
-        );
-        ctx.fillStyle = "rgba(255,255,255,0.55)";
-        ctx.fill();
+          ctx.beginPath();
+          ctx.arc(node.x ?? 0, node.y ?? 0, radius, 0, Math.PI * 2);
+          ctx.strokeStyle = isHovered ? "#FFFFFF" : baseColor;
+          ctx.lineWidth = Math.max(1.5 / globalScale, radius * 0.18);
+          ctx.shadowColor = baseColor;
+          ctx.shadowBlur = isHovered ? 24 : 14;
+          ctx.stroke();
+        } else {
+          // Fallback glowing sphere if no avatar photo.
+          ctx.beginPath();
+          ctx.arc(node.x ?? 0, node.y ?? 0, radius, 0, Math.PI * 2);
+          ctx.fillStyle = isHovered ? "#F8FAFC" : baseColor;
+          ctx.shadowColor = baseColor;
+          ctx.shadowBlur = isHovered ? 24 : 14;
+          ctx.fill();
+
+          ctx.shadowBlur = 0;
+          ctx.beginPath();
+          ctx.arc(
+            (node.x ?? 0) - radius * 0.25,
+            (node.y ?? 0) - radius * 0.25,
+            radius * 0.35,
+            0,
+            Math.PI * 2,
+          );
+          ctx.fillStyle = "rgba(255,255,255,0.55)";
+          ctx.fill();
+        }
 
         const fontSize = Math.max(11 / globalScale, 3.2);
         ctx.font = `600 ${fontSize}px Syne, Manrope, sans-serif`;
         ctx.textAlign = "center";
         ctx.textBaseline = "top";
-        ctx.fillStyle = isFocus ? "#E2E8F0" : "rgba(226,232,240,0.15)";
+        ctx.fillStyle = isFocus ? "#FFFFFF" : "rgba(226,232,240,0.18)";
         ctx.shadowColor = "rgba(2,6,23,0.9)";
         ctx.shadowBlur = 4;
         ctx.fillText(node.name, node.x ?? 0, (node.y ?? 0) + radius + 2);
 
         ctx.restore();
       },
-      [highlightRootId, highlight.nodes],
+      [getAvatarImage, highlightRootId, highlight.nodes],
     );
 
     const paintLink = useCallback(
@@ -283,7 +329,7 @@ const NetworkGalaxy = forwardRef<NetworkGalaxyHandle, NetworkGalaxyProps>(
           return;
         }
 
-        const isFocus = !highlightRootId || highlight.links.has(link);
+      const isFocus = !highlightRootId || highlight.links.has(link);
         const color = RELATION_COLORS[link.type as RelationType] ?? "#64748B";
 
         ctx.save();
@@ -339,6 +385,20 @@ const NetworkGalaxy = forwardRef<NetworkGalaxyHandle, NetworkGalaxyProps>(
         link.distance(55);
       }
     }, [graphData]);
+
+    // Clear stale cache entries when graph updates.
+    useEffect(() => {
+      const active = new Set(
+        graphData.nodes
+          .map((n) => n.avatarUrl)
+          .filter((url): url is string => Boolean(url)),
+      );
+      for (const key of avatarImageCache.current.keys()) {
+        if (!active.has(key)) avatarImageCache.current.delete(key);
+      }
+      // Trigger repaint when new URLs appear.
+      setAvatarVersion((v) => v + 1);
+    }, [graphData.nodes]);
 
     return (
       <div ref={containerRef} className="relative h-full w-full bg-slate-950">

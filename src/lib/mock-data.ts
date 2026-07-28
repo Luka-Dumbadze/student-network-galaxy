@@ -59,6 +59,30 @@ const GLOBAL_PROBLEMS_POOL = [
   "Digital inclusion",
 ];
 
+function initials(name: string): string {
+  const parts = name.split(" ").filter(Boolean);
+  return parts.slice(0, 2).map((p) => p[0]?.toUpperCase() ?? "").join("");
+}
+
+function avatarColor(index: number): string {
+  const hue = Math.round((index * 37) % 360);
+  return `hsl(${hue} 70% 46%)`;
+}
+
+function createAvatarDataUrl(name: string, index: number): string {
+  const bg = avatarColor(index);
+  const text = initials(name);
+  const svg =
+    `<svg xmlns='http://www.w3.org/2000/svg' width='256' height='256' viewBox='0 0 256 256'>` +
+    `<defs><radialGradient id='g' cx='30%' cy='30%'><stop offset='0%' stop-color='#ffffff66'/><stop offset='100%' stop-color='${bg}'/></radialGradient></defs>` +
+    `<rect width='256' height='256' fill='url(#g)'/>` +
+    `<circle cx='128' cy='128' r='112' fill='${bg}' fill-opacity='0.85'/>` +
+    `<text x='50%' y='54%' text-anchor='middle' dominant-baseline='middle' font-family='Arial, Helvetica, sans-serif' font-size='88' font-weight='700' fill='white'>${text}</text>` +
+    `</svg>`;
+
+  return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
+}
+
 function pickGlobalProblems(index: number): string[] {
   const picked: string[] = [];
   const seen = new Set<number>();
@@ -82,6 +106,7 @@ function pickGlobalProblems(index: number): string[] {
 const STUDENTS_WITH_GLOBAL = STUDENTS.map((s, i) => ({
   ...s,
   globalProblems: pickGlobalProblems(i),
+  avatarUrl: createAvatarDataUrl(s.name, i),
 }));
 
 const ids = STUDENTS_WITH_GLOBAL.map((s) => s.id);

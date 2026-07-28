@@ -10,6 +10,8 @@ export interface Node {
   inDegreeKnows: number;
   /** Visual weight for force-graph nodeVal (derived from in-degree centrality). */
   val: number;
+  /** Profile photo URL (from CSV image columns or local object URL binding). */
+  avatarUrl?: string;
   /**
    * Exactly the 3 (up to) selected global problems for this student.
    * Parsed from Google Forms global problems columns; optional for older CSVs.

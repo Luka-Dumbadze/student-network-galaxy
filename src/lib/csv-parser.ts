@@ -1,5 +1,5 @@
 import Papa from "papaparse";
-import type { Link, NetworkGraph, RelationType } from "@/types/network";
+import type { Link, NetworkGraph, Node, RelationType } from "@/types/network";
 import { buildNetworkGraph } from "@/lib/network-utils";
 
 const ADVICE_HINTS = [
@@ -27,6 +27,7 @@ const NAME_HINTS = [
 
 const GLOBAL_PROBLEM_HEADER_RE =
   /(global\s*problem|global\s*problems|global\s*passion|global\s*challenge|გლობალური|პრობლემა)/i;
+const AVATAR_HEADER_RE = /(photo|image|avatar|ფოტო|სურათი)/i;
 
 function normalizeHeader(h: string): string {
   return h.trim().toLowerCase().replace(/\s+/g, " ");
@@ -40,6 +41,17 @@ function slugify(name: string): string {
     .replace(/[\u0300-\u036f]/g, "")
     .replace(/[^a-z0-9ა-ჰ]+/gi, "-")
     .replace(/^-+|-+$/g, "");
+}
+
+export function normalizePersonKey(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9ა-ჰ]+/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function findColumn(
@@ -176,6 +188,9 @@ export function parseGoogleFormsCsv(csvText: string): CsvParseResult {
   const globalProblemCols = headers.filter((h) =>
     GLOBAL_PROBLEM_HEADER_RE.test(normalizeHeader(h)),
   );
+  const avatarCols = headers.filter((h) =>
+    AVATAR_HEADER_RE.test(normalizeHeader(h)),
+  );
   // Global problems are optional; older CSV exports may not include them.
 
   const nameToId = new Map<string, string>();
@@ -183,10 +198,12 @@ export function parseGoogleFormsCsv(csvText: string): CsvParseResult {
     id: string;
     name: string;
     globalProblems?: string[];
+    avatarUrl?: string;
   }> = [];
   const links: Link[] = [];
   const linkKeys = new Set<string>();
   const globalProblemsById = new Map<string, string[]>();
+  const avatarById = new Map<string, string>();
 
   const parseGlobalProblemsForRow = (row: Record<string, string>): string[] => {
     if (globalProblemCols.length === 0) return [];
@@ -217,6 +234,15 @@ export function parseGoogleFormsCsv(csvText: string): CsvParseResult {
     return id;
   };
 
+  const parseAvatarUrlForRow = (row: Record<string, string>): string | undefined => {
+    for (const col of avatarCols) {
+      const cell = String(row[col] ?? "").trim();
+      if (!cell || /^n\/?a$/i.test(cell)) continue;
+      return cell;
+    }
+    return undefined;
+  };
+
   const addLinks = (
     sourceId: string,
     targets: string[],
@@ -241,6 +267,8 @@ export function parseGoogleFormsCsv(csvText: string): CsvParseResult {
     if (probs.length > 0) {
       globalProblemsById.set(sourceId, mergeProblems(globalProblemsById.get(sourceId), probs));
     }
+    const avatarUrl = parseAvatarUrlForRow(row);
+    if (avatarUrl) avatarById.set(sourceId, avatarUrl);
 
     if (adviceCol) {
       addLinks(sourceId, splitNameList(String(row[adviceCol] ?? "")), "advice");
@@ -260,11 +288,80 @@ export function parseGoogleFormsCsv(csvText: string): CsvParseResult {
   for (const person of people) {
     const probs = globalProblemsById.get(person.id);
     if (probs && probs.length > 0) person.globalProblems = probs;
+    const avatarUrl = avatarById.get(person.id);
+    if (avatarUrl) person.avatarUrl = avatarUrl;
   }
 
   return {
     graph: buildNetworkGraph(people, links),
     warnings,
+  };
+}
+
+function fileBaseName(fileName: string): string {
+  return fileName.replace(/\.[a-z0-9]+$/i, "");
+}
+
+function tokenizeName(value: string): string[] {
+  return normalizePersonKey(value)
+    .split(" ")
+    .map((t) => t.trim())
+    .filter(Boolean);
+}
+
+function scoreNameMatch(node: Node, fileName: string): number {
+  const nodeTokens = tokenizeName(node.name);
+  const fileTokens = tokenizeName(fileBaseName(fileName));
+  if (!nodeTokens.length || !fileTokens.length) return 0;
+
+  const nodeJoined = nodeTokens.join(" ");
+  const fileJoined = fileTokens.join(" ");
+  if (nodeJoined === fileJoined) return 100;
+  if (fileJoined.includes(nodeJoined) || nodeJoined.includes(fileJoined)) return 80;
+
+  const set = new Set(nodeTokens);
+  let overlap = 0;
+  for (const t of fileTokens) if (set.has(t)) overlap += 1;
+  return overlap * 20;
+}
+
+export function bindAvatarFilesToGraph(
+  graph: NetworkGraph,
+  files: File[],
+): { graph: NetworkGraph; matched: number; unmatchedFiles: string[] } {
+  if (files.length === 0) return { graph, matched: 0, unmatchedFiles: [] };
+
+  const nextNodes = [...graph.nodes];
+  let matched = 0;
+  const unmatchedFiles: string[] = [];
+
+  for (const file of files) {
+    let best: Node | null = null;
+    let bestScore = 0;
+    for (const node of nextNodes) {
+      const score = scoreNameMatch(node, file.name);
+      if (score > bestScore) {
+        best = node;
+        bestScore = score;
+      }
+    }
+
+    if (!best || bestScore < 40) {
+      unmatchedFiles.push(file.name);
+      continue;
+    }
+
+    const idx = nextNodes.findIndex((n) => n.id === best?.id);
+    if (idx >= 0) {
+      nextNodes[idx] = { ...nextNodes[idx], avatarUrl: URL.createObjectURL(file) };
+      matched += 1;
+    }
+  }
+
+  return {
+    graph: { ...graph, nodes: nextNodes },
+    matched,
+    unmatchedFiles,
   };
 }
 

@@ -29,12 +29,12 @@ describe("parseGoogleFormsCsv", () => {
 
   it("parses global problems columns into node.globalProblems (cleansing + splitting)", () => {
     const headerWithProblems =
-      "Timestamp,Your Name,Who do you ask for advice?,Who is your friend?,Who do you know?,Global Problem 1,Global Problem 2,Global Problem 3";
+      "Timestamp,Your Name,Who do you ask for advice?,Who is your friend?,Who do you know?,Photo URL,Global Problem 1,Global Problem 2,Global Problem 3";
 
     const csv = [
       headerWithProblems,
-      "t,Nino Beridze,Mentor X,Ana Gelashvili,Luka Abashidze,\"Climate Change, Cybersecurity\",Digital Inclusion,",
-      "t,Ana Gelashvili,Mentor X,,Nino Beridze,Food security,,Reducing inequality",
+      "t,Nino Beridze,Mentor X,Ana Gelashvili,Luka Abashidze,https://img.local/nino.jpg,\"Climate Change, Cybersecurity\",Digital Inclusion,",
+      "t,Ana Gelashvili,Mentor X,,Nino Beridze,https://img.local/ana.webp,Food security,,Reducing inequality",
     ].join("\n");
 
     const { graph } = parseGoogleFormsCsv(csv);
@@ -46,10 +46,12 @@ describe("parseGoogleFormsCsv", () => {
       "Cybersecurity",
       "Digital Inclusion",
     ]);
+    expect(nino?.avatarUrl).toBe("https://img.local/nino.jpg");
     expect(ana?.globalProblems).toEqual([
       "Food security",
       "Reducing inequality",
     ]);
+    expect(ana?.avatarUrl).toBe("https://img.local/ana.webp");
   });
 
   it("parses multi-select relationship cells into typed links", () => {

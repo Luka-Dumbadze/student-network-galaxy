@@ -44,7 +44,47 @@ const STUDENTS: Array<{ id: string; name: string }> = [
   { id: "eka-ninua", name: "Eka Ninua" },
 ];
 
-const ids = STUDENTS.map((s) => s.id);
+const GLOBAL_PROBLEMS_POOL = [
+  "Climate change",
+  "Quality education",
+  "Clean water & sanitation",
+  "Sustainable cities",
+  "Affordable healthcare",
+  "Decent work & economic growth",
+  "Gender equality",
+  "Cybersecurity",
+  "Food security",
+  "Renewable energy",
+  "Reducing inequality",
+  "Digital inclusion",
+];
+
+function pickGlobalProblems(index: number): string[] {
+  const picked: string[] = [];
+  const seen = new Set<number>();
+  for (let k = 0; k < 3; k++) {
+    const idx = Math.floor(seeded(index * 13 + k * 29 + 7) * GLOBAL_PROBLEMS_POOL.length);
+    if (seen.has(idx)) continue;
+    seen.add(idx);
+    picked.push(GLOBAL_PROBLEMS_POOL[idx] ?? GLOBAL_PROBLEMS_POOL[0]!);
+    if (picked.length === 3) break;
+  }
+  // Fallback if we collided too many times.
+  while (picked.length < 3) {
+    const idx = Math.floor(seeded(index * 71 + picked.length * 17 + 1) * GLOBAL_PROBLEMS_POOL.length);
+    if (seen.has(idx)) continue;
+    seen.add(idx);
+    picked.push(GLOBAL_PROBLEMS_POOL[idx] ?? GLOBAL_PROBLEMS_POOL[0]!);
+  }
+  return picked;
+}
+
+const STUDENTS_WITH_GLOBAL = STUDENTS.map((s, i) => ({
+  ...s,
+  globalProblems: pickGlobalProblems(i),
+}));
+
+const ids = STUDENTS_WITH_GLOBAL.map((s) => s.id);
 
 /** Deterministic pseudo-random for stable mock topology. */
 function seeded(n: number): number {
@@ -128,7 +168,7 @@ function generateLinks(): Link[] {
 }
 
 export const MOCK_NETWORK: NetworkGraph = buildNetworkGraph(
-  STUDENTS,
+  STUDENTS_WITH_GLOBAL,
   generateLinks(),
 );
 

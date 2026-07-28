@@ -12,6 +12,7 @@ export function linkEndpointId(
 export function computeNodeMetrics(
   names: Map<string, string>,
   links: Link[],
+  globalProblemsById?: Map<string, string[]>,
 ): Node[] {
   const degrees = new Map<
     string,
@@ -40,15 +41,20 @@ export function computeNodeMetrics(
       inDegreeKnows: d.knows,
       // Keep small nodes visible; scale with centrality for constellation weight.
       val: Math.max(1, 1 + total * 0.85),
+      globalProblems: globalProblemsById?.get(id),
     };
   });
 }
 
 export function buildNetworkGraph(
-  people: Array<{ id: string; name: string }>,
+  people: Array<{ id: string; name: string; globalProblems?: string[] }>,
   links: Link[],
 ): NetworkGraph {
   const names = new Map(people.map((p) => [p.id, p.name]));
+  const globalProblemsById = new Map<string, string[]>();
+  for (const p of people) {
+    if (p.globalProblems?.length) globalProblemsById.set(p.id, p.globalProblems);
+  }
   // Ensure every link endpoint exists as a node.
   for (const link of links) {
     for (const end of [link.source, link.target]) {
@@ -57,7 +63,7 @@ export function buildNetworkGraph(
     }
   }
   return {
-    nodes: computeNodeMetrics(names, links),
+    nodes: computeNodeMetrics(names, links, globalProblemsById),
     links,
   };
 }

@@ -173,6 +173,24 @@ const NetworkGalaxy = forwardRef<NetworkGalaxyHandle, NetworkGalaxyProps>(
       return { nodes: nodeIds, links };
     }, [highlightRootId, graphData.links]);
 
+    const detailNode = useMemo(() => {
+    if (!highlightRootId) return null;
+    return (graphData.nodes as GraphNode[]).find((n) => n.id === highlightRootId) ?? null;
+  }, [highlightRootId, graphData.nodes]);
+
+  const role = useMemo(() => {
+    if (!detailNode) return null;
+    const a = detailNode.inDegreeAdvice;
+    const f = detailNode.inDegreeFriend;
+    const k = detailNode.inDegreeKnows;
+    const max = Math.max(a, f, k);
+
+    if (max === a && a > 0) return { label: "Advisor", tone: "amber" as const };
+    if (max === f && f > 0) return { label: "Connector", tone: "emerald" as const };
+    if (max === k && k > 0) return { label: "Explorer", tone: "sky" as const };
+    return { label: "Student", tone: "slate" as const };
+  }, [detailNode]);
+
     const paintNode = useCallback(
       (node: GraphNode, ctx: CanvasRenderingContext2D, globalScale: number) => {
         const isFocus = !highlightRootId || highlight.nodes.has(node.id);
@@ -435,6 +453,60 @@ const NetworkGalaxy = forwardRef<NetworkGalaxyHandle, NetworkGalaxyProps>(
             </div>
           ))}
         </motion.div>
+
+        {/* Student detail badge (hover/selection) */}
+        {detailNode && role && (
+          <motion.div
+            initial={{ opacity: 0, y: -10, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -6, scale: 0.98 }}
+            transition={{ duration: 0.22 }}
+            className="absolute right-5 top-24 z-30 w-80 max-w-[calc(100vw-2rem)] pointer-events-none"
+          >
+            <div className="rounded-2xl border border-slate-700/70 bg-slate-950/80 px-4 py-3 shadow-2xl shadow-black/40 backdrop-blur-md">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="truncate text-[13px] font-bold text-slate-50">
+                    {detailNode.name}
+                  </p>
+                  <p className="mt-0.5 text-[11px] text-slate-400">
+                    {detailNode.inDegreeAdvice + detailNode.inDegreeFriend + detailNode.inDegreeKnows} total incoming ties
+                  </p>
+                </div>
+                <span
+                  className={`inline-flex shrink-0 items-center rounded-full border px-2 py-1 text-[11px] font-semibold ${
+                    role.tone === "amber"
+                      ? "border-amber-400/40 bg-amber-400/10 text-amber-100"
+                      : role.tone === "emerald"
+                        ? "border-emerald-400/40 bg-emerald-400/10 text-emerald-100"
+                        : role.tone === "sky"
+                          ? "border-sky-400/40 bg-sky-400/10 text-sky-100"
+                          : "border-slate-700/70 bg-slate-800/30 text-slate-100"
+                  }`}
+                >
+                  {role.label}
+                </span>
+              </div>
+
+              <div className="mt-3">
+                <p className="text-[11px] font-semibold tracking-wide text-slate-300">
+                  🌍 Global Problems
+                </p>
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {(detailNode.globalProblems?.length ? detailNode.globalProblems : ["Not provided"]).slice(0, 3).map((p) => (
+                    <span
+                      key={p}
+                      className="inline-flex items-center gap-1 rounded-full border border-slate-700/70 bg-slate-900/50 px-2 py-1 text-[11px] text-slate-200"
+                    >
+                      <span aria-hidden>🌍</span>
+                      {p}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </motion.div>
+        )}
       </div>
     );
   },

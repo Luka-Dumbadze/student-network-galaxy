@@ -25,6 +25,9 @@ const NAME_HINTS = [
   "respondent",
 ];
 
+const GLOBAL_PROBLEM_HEADER_RE =
+  /(global\s*problem|global\s*problems|global\s*passion|global\s*challenge|გლობალური|პრობლემა)/i;
+
 function normalizeHeader(h: string): string {
   return h.trim().toLowerCase().replace(/\s+/g, " ");
 }
@@ -90,6 +93,31 @@ export interface CsvParseResult {
   warnings: string[];
 }
 
+function splitProblemTokens(raw: string): string[] {
+  if (!raw) return [];
+  return raw
+    .split(/[,;|\n]+/)
+    .map((s) => s.trim())
+    .filter(
+      (s) => s.length > 0 && !/^n\/?a$/i.test(s) && s.toLowerCase() !== "null",
+    );
+}
+
+function mergeProblems(
+  existing: string[] | undefined,
+  incoming: string[],
+): string[] {
+  const merged: string[] = [];
+  const seen = new Set<string>();
+  for (const value of [...(existing ?? []), ...incoming]) {
+    const key = value.trim().toLowerCase();
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    merged.push(value.trim());
+  }
+  return merged.slice(0, 3);
+}
+
 export function parseGoogleFormsCsv(csvText: string): CsvParseResult {
   const warnings: string[] = [];
   const parsed = Papa.parse<Record<string, string>>(csvText, {
@@ -145,10 +173,41 @@ export function parseGoogleFormsCsv(csvText: string): CsvParseResult {
   if (!friendCol) warnings.push("No friendship column detected.");
   if (!knowsCol) warnings.push("No acquaintance column detected.");
 
+  const globalProblemCols = headers.filter((h) =>
+    GLOBAL_PROBLEM_HEADER_RE.test(normalizeHeader(h)),
+  );
+  // Global problems are optional; older CSV exports may not include them.
+
   const nameToId = new Map<string, string>();
-  const people: Array<{ id: string; name: string }> = [];
+  const people: Array<{
+    id: string;
+    name: string;
+    globalProblems?: string[];
+  }> = [];
   const links: Link[] = [];
   const linkKeys = new Set<string>();
+  const globalProblemsById = new Map<string, string[]>();
+
+  const parseGlobalProblemsForRow = (row: Record<string, string>): string[] => {
+    if (globalProblemCols.length === 0) return [];
+
+    const tokens: string[] = [];
+    for (const col of globalProblemCols.slice(0, 6)) {
+      const cell = String(row[col] ?? "");
+      tokens.push(...splitProblemTokens(cell));
+    }
+
+    // De-dup by case-insensitive key while preserving order.
+    const seen = new Set<string>();
+    const unique: string[] = [];
+    for (const token of tokens) {
+      const key = token.toLowerCase().trim();
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      unique.push(token);
+    }
+    return unique.slice(0, 3);
+  };
 
   const ensurePerson = (displayName: string): string => {
     const id = resolvePersonId(displayName, nameToId);
@@ -178,6 +237,11 @@ export function parseGoogleFormsCsv(csvText: string): CsvParseResult {
     if (!respondentName) continue;
     const sourceId = ensurePerson(respondentName);
 
+    const probs = parseGlobalProblemsForRow(row);
+    if (probs.length > 0) {
+      globalProblemsById.set(sourceId, mergeProblems(globalProblemsById.get(sourceId), probs));
+    }
+
     if (adviceCol) {
       addLinks(sourceId, splitNameList(String(row[adviceCol] ?? "")), "advice");
     }
@@ -191,6 +255,11 @@ export function parseGoogleFormsCsv(csvText: string): CsvParseResult {
 
   if (people.length === 0) {
     throw new Error("No named respondents found in the CSV.");
+  }
+
+  for (const person of people) {
+    const probs = globalProblemsById.get(person.id);
+    if (probs && probs.length > 0) person.globalProblems = probs;
   }
 
   return {

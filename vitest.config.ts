@@ -4,6 +4,7 @@ import path from "node:path";
 export default defineConfig({
   test: {
     environment: "node",
+    pool: "threads",
     include: ["tests/**/*.test.ts"],
   },
   resolve: {

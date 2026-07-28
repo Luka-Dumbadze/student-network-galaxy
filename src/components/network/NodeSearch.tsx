@@ -143,7 +143,18 @@ export default function NodeSearch({
                         : "text-slate-300 hover:bg-slate-800/80"
                     }`}
                   >
-                    <span className="truncate font-medium">{node.name}</span>
+                    <span className="min-w-0 flex-1">
+                      <span className="truncate font-medium">{node.name}</span>
+                      <span className="mt-0.5 block text-[10px] text-slate-500">
+                        {node.globalProblems?.length
+                          ? `🌍 ${node.globalProblems[0]}${
+                              node.globalProblems.length > 1
+                                ? ` +${node.globalProblems.length - 1}`
+                                : ""
+                            }`
+                          : "🌍 Not provided"}
+                      </span>
+                    </span>
                     <span className="ml-2 shrink-0 text-[10px] text-slate-500">
                       adv {node.inDegreeAdvice}
                     </span>

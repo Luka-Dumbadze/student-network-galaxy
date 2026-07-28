@@ -27,6 +27,31 @@ describe("parseGoogleFormsCsv", () => {
   const header =
     "Timestamp,Your Name,Who do you ask for advice?,Who is your friend?,Who do you know?";
 
+  it("parses global problems columns into node.globalProblems (cleansing + splitting)", () => {
+    const headerWithProblems =
+      "Timestamp,Your Name,Who do you ask for advice?,Who is your friend?,Who do you know?,Global Problem 1,Global Problem 2,Global Problem 3";
+
+    const csv = [
+      headerWithProblems,
+      "t,Nino Beridze,Mentor X,Ana Gelashvili,Luka Abashidze,\"Climate Change, Cybersecurity\",Digital Inclusion,",
+      "t,Ana Gelashvili,Mentor X,,Nino Beridze,Food security,,Reducing inequality",
+    ].join("\n");
+
+    const { graph } = parseGoogleFormsCsv(csv);
+    const nino = graph.nodes.find((n) => n.name === "Nino Beridze");
+    const ana = graph.nodes.find((n) => n.name === "Ana Gelashvili");
+
+    expect(nino?.globalProblems).toEqual([
+      "Climate Change",
+      "Cybersecurity",
+      "Digital Inclusion",
+    ]);
+    expect(ana?.globalProblems).toEqual([
+      "Food security",
+      "Reducing inequality",
+    ]);
+  });
+
   it("parses multi-select relationship cells into typed links", () => {
     const csv = [
       header,
